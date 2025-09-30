@@ -4,34 +4,35 @@
     "size": 100,
     "data": [
       {
-        "columnName": "customer_id",
-        "type": "SERIAL",
-        "startFrom": 1000
-      },
-      {
-        "columnName": "zip_code",
-        "type": "REGEX",
-        "pattern": "\\d{7}"
-      },
-      {
-        "columnName": "username",
-        "type": "STRING",
-        "format": "user_{i}",
-        "unique": true
+        "columnName": "full_name",
+        "type": "FAKER",
+        "generator": "name.fullName" 
       },
       {
         "columnName": "email",
         "type": "REGEX",
-        "pattern": "[a-z0-9]{7}\\@(demo|example)\\.com"
+        "pattern": "[a-z0-9]{10}\\@(demo|example)\\.com",
+        "unique": true
+        
+      },
+      {
+        "columnName": "zip_code",
+        "type": "FAKER",
+        "generator": "address.zipCode" 
+      },
+      {
+        "columnName": "phone",
+        "type": "FAKER",
+        "generator": "phoneNumber.phoneNumber"
       },
       {
         "columnName": "password_raw",
         "type": "STRING",
         "format": "pass123",
-        "isHashed": "password_hash"
+        "isHashed": "hashed_password"
       },
       {
-        "columnName": "last_login",
+        "columnName": "last_login_date",
         "type": "DATETIME",
         "minDate": "2024-01-01 00:00:00"
       },

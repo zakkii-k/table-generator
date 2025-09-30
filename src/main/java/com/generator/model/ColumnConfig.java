@@ -50,6 +50,9 @@ public class ColumnConfig {
     @JsonProperty("isHashed")
     private String isHashed; // ハッシュ化後のカラム名
 
+    @JsonProperty("generator")
+    private String generator; 
+
     // Getter and Setter (Jacksonが使用するため必須)
     public String getColumnName() { return columnName; }
     public void setColumnName(String columnName) { this.columnName = columnName; }
@@ -89,4 +92,7 @@ public class ColumnConfig {
 
     public String getIsHashed() { return isHashed; }
     public void setIsHashed(String isHashed) { this.isHashed = isHashed; }
+
+    public String getGenerator() { return generator; }
+    public void setGenerator(String generator) { this.generator = generator; }
 }

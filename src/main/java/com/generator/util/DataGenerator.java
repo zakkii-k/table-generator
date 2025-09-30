@@ -7,6 +7,9 @@ import com.github.javafaker.Faker;
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
@@ -31,7 +34,7 @@ public class DataGenerator {
     public DataGenerator(long seed) {
         // シード値を持つRandomインスタンスを使用
         this.random = new Random(seed);
-        this.faker = new Faker(this.random);
+        this.faker = new Faker(Locale.JAPANESE, this.random);
         System.out.println("データ生成ツールが初期化されました。シード値: " + seed);
     }
 
@@ -170,6 +173,8 @@ public class DataGenerator {
                     return null;
                 }
                 return faker.regexify(pattern);
+            case "FAKER":
+                return generateFakerValue(config);
 
             case "NUMBER":
                 long min = config.getMin() != null ? config.getMin() : 0;
@@ -214,6 +219,45 @@ public class DataGenerator {
         }
     }
 
+    /**
+     * ⭐︎ FAKER型のためのリフレクションを使用した値の生成
+     * @param config カラム設定
+     * @return 生成されたFakerの値
+     */
+    private String generateFakerValue(ColumnConfig config) {
+        String generatorPath = config.getGenerator(); // 例: "name.fullName"
+        if (generatorPath == null || generatorPath.isEmpty()) {
+            System.err.println("エラー: FAKER型には 'generator' キーが必要です。");
+            return "FAKER_ERROR";
+        }
+
+        try {
+            String[] parts = generatorPath.split("\\.");
+            if (parts.length != 2) {
+                System.err.println("エラー: generator形式は 'module.method' である必要があります。指定: " + generatorPath);
+                return "FAKER_ERROR";
+            }
+            String moduleName = parts[0]; // 例: "name"
+            String methodName = parts[1]; // 例: "fullName"
+
+            // 1. モジュールオブジェクト (例: faker.name() の Name オブジェクト) を取得
+            Method moduleMethod = Faker.class.getMethod(moduleName);
+            Object moduleInstance = moduleMethod.invoke(faker);
+
+            // 2. 値を生成するメソッド (例: fullName() ) を取得して呼び出し
+            Method generationMethod = moduleInstance.getClass().getMethod(methodName);
+            Object result = generationMethod.invoke(moduleInstance);
+
+            return result.toString();
+        } catch (NoSuchMethodException e) {
+            System.err.println("エラー: FAKERメソッドが見つかりません。パス: " + generatorPath + ". メソッド名または引数を確認してください。");
+        } catch (InvocationTargetException | IllegalAccessException e) {
+            System.err.println("エラー: FAKERメソッド呼び出し中に例外が発生しました。パス: " + generatorPath);
+        } catch (Exception e) {
+            System.err.println("Faker値の生成中に予期せぬエラーが発生しました: " + e.getMessage());
+        }
+        return "FAKER_GEN_FAILED";
+    }
     /**
      * ランダムな日時を生成します。
      */
