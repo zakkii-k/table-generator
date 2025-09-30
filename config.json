@@ -1,0 +1,80 @@
+[
+  {
+    "name": "CUSTOMER",
+    "size": 100,
+    "data": [
+      {
+        "columnName": "customer_id",
+        "type": "SERIAL",
+        "startFrom": 1000
+      },
+      {
+        "columnName": "zip_code",
+        "type": "REGEX",
+        "pattern": "\\d{7}"
+      },
+      {
+        "columnName": "username",
+        "type": "STRING",
+        "format": "user_{i}",
+        "unique": true
+      },
+      {
+        "columnName": "email",
+        "type": "REGEX",
+        "pattern": "[a-z0-9]{7}\\@(demo|example)\\.com"
+      },
+      {
+        "columnName": "password_raw",
+        "type": "STRING",
+        "format": "pass123",
+        "isHashed": "password_hash"
+      },
+      {
+        "columnName": "last_login",
+        "type": "DATETIME",
+        "minDate": "2024-01-01 00:00:00"
+      },
+      {
+        "columnName": "status",
+        "type": "ARRAY",
+        "values": ["ACTIVE", "INACTIVE", "BLOCKED"],
+        "isRandom": true
+      }
+    ]
+  },
+  {
+    "name": "PRODUCT",
+    "size": 50,
+    "data": [
+      {
+        "columnName": "product_id",
+        "type": "SERIAL",
+        "startFrom": 50000
+      },
+      {
+        "columnName": "product_name",
+        "type": "REGEX",
+        "pattern": "(Red|Blue|Green) (T-Shirt|Pants|Hoodie) #\\d{3}"
+      },
+      {
+        "columnName": "price",
+        "type": "NUMBER",
+        "min": 1000,
+        "max": 99999
+      },
+      {
+        "columnName": "stock",
+        "type": "NUMBER",
+        "min": 0,
+        "max": 50
+      },
+      {
+        "columnName": "size",
+        "type": "ARRAY",
+        "values": ["S", "M", "L", "XL"],
+        "isRandom": false
+      }
+    ]
+  }
+]
