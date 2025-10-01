@@ -3,16 +3,15 @@ package com.generator.util;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.generator.model.ColumnConfig;
 import com.generator.model.TableConfig;
-import com.github.javafaker.Faker; 
+import com.github.javafaker.Faker;
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
-
-import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Method;
 
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
@@ -22,19 +21,22 @@ import java.util.stream.Collectors;
 
 /**
  * テーブル定義に基づいてランダムなデータを生成し、SQLまたはXLSXに出力するクラス。
+ * 外部キー整合性チェックとFakerの引数付きメソッド呼び出しに対応。
  */
 public class DataGenerator {
 
     private final Random random;
-    private static final DateTimeFormatter DATE_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
     private final Faker faker;
+    private static final DateTimeFormatter DATE_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
-    // private final Map<String, Generex> generexCache = new HashMap<>();
+    // 外部キー参照用のデータキャッシュ: Map<テーブル名.カラム名, List<値>>
+    private final Map<String, List<Object>> referenceDataCache = new ConcurrentHashMap<>();
 
     public DataGenerator(long seed) {
-        // シード値を持つRandomインスタンスを使用
+        // シード値を持つRandomインスタンスを使用し、再現性を確保
         this.random = new Random(seed);
-        this.faker = new Faker(Locale.JAPANESE, this.random);
+        // Fakerを日本語ロケールとRandomインスタンスで初期化
+        this.faker = new Faker(new Locale("ja", "JP"), this.random); 
         System.out.println("データ生成ツールが初期化されました。シード値: " + seed);
     }
 
@@ -47,6 +49,7 @@ public class DataGenerator {
     public List<TableConfig> loadConfig(String jsonFilePath) throws IOException {
         ObjectMapper mapper = new ObjectMapper();
         File jsonFile = new File(jsonFilePath);
+        
         // リソースフォルダからのロードを試みる
         if (!jsonFile.exists()) {
             try {
@@ -80,9 +83,30 @@ public class DataGenerator {
             } else if (outputType.equalsIgnoreCase("xlsx")) {
                 writeXlsxFile(config.getName(), generatedData, outputDir);
             }
+            
+            // 外部キー参照用に、生成された主キーやユニークな値をキャッシュ
+            cacheReferenceData(config, generatedData);
         }
         System.out.println("\n--- 全てのデータ生成と出力が完了しました ---");
     }
+
+    /**
+     * テーブル生成後、そのテーブルの主キーや参照可能なデータをキャッシュします。
+     */
+    private void cacheReferenceData(TableConfig config, List<Map<String, Object>> generatedData) {
+        for (ColumnConfig col : config.getData()) {
+            // SERIALまたはunique: trueのカラムをキャッシュ対象とする
+            if ("SERIAL".equalsIgnoreCase(col.getType()) || (col.getUnique() != null && col.getUnique())) {
+                String key = config.getName() + "." + col.getColumnName();
+                List<Object> values = generatedData.stream()
+                        .map(row -> row.get(col.getColumnName()))
+                        .collect(Collectors.toList());
+                referenceDataCache.put(key, values);
+                System.out.println("  -> キャッシュ完了: " + key + " (" + values.size() + "件)");
+            }
+        }
+    }
+
 
     /**
      * 単一のテーブルのデータを生成します。
@@ -121,9 +145,16 @@ public class DataGenerator {
                 } else {
                     // ユニーク制約がある場合は、ユニークな値が得られるまでループ
                     do {
-                        // SERIAL Countersはここでは不要なため削除
+                        // 外部キー参照が設定されている場合、それを最優先
+                        if (col.getFkReference() != null) {
+                            value = generateForeignKeyValue(col);
+                            break; 
+                        }
+                        
                         value = generateSingleValue(col, primaryKey, arrayIndices); 
                         attempts++;
+                        
+                        // ユニーク制約チェック
                         if (!isUniqueRequired || !uniqueValues.getOrDefault(col.getColumnName(), Collections.emptySet()).contains(value)) {
                             break; // ユニーク制約がない、またはユニークな値が生成された
                         }
@@ -145,6 +176,7 @@ public class DataGenerator {
 
                 // isHashedが指定されている場合、ハッシュカラムを追加
                 if (col.getIsHashed() != null && "STRING".equalsIgnoreCase(col.getType())) {
+                    // Hasher を使用
                     String hash = Hasher.hashPassword(value.toString());
                     row.put(col.getIsHashed(), hash);
                 }
@@ -155,13 +187,32 @@ public class DataGenerator {
     }
 
     /**
+     * 外部キー (FK) の値をキャッシュからランダムに取得します。
+     * @param config カラム設定
+     * @return 参照先のキー値
+     */
+    private Object generateForeignKeyValue(ColumnConfig config) {
+        String ref = config.getFkReference(); // 例: "CUSTOMER.customer_id"
+        List<Object> values = referenceDataCache.get(ref);
+
+        if (values == null || values.isEmpty()) {
+            System.err.println("エラー: 外部キー参照 '" + ref + "' のデータがキャッシュに見つかりません。JSONで親テーブルが先に定義されているか確認してください。");
+            return 0; // 参照失敗を示すデフォルト値
+        }
+        
+        // キャッシュされた値からランダムに選択
+        int randomIndex = random.nextInt(values.size());
+        return values.get(randomIndex);
+    }
+
+
+    /**
      * 単一のカラムの値を生成します。
      * @param config カラム設定
      * @param primaryKey 現在の行の主キー値 (STRINGプレースホルダー用)
      * @param arrayIndices 配列のインデックス追跡用マップ
      */
     private Object generateSingleValue(ColumnConfig config, int primaryKey, Map<String, Integer> arrayIndices) {
-        System.out.println("カラム '" + config.getColumnName() + "' の値を生成中... (タイプ: " + config.getType() + ")");
         switch (config.getType().toUpperCase()) {
             case "STRING":
                 String formattedString = config.getFormat().replace("{i}", String.valueOf(primaryKey));
@@ -172,7 +223,9 @@ public class DataGenerator {
                 if (pattern == null || pattern.isEmpty()) {
                     return null;
                 }
+                // GenerexではなくFakerのregexifyを使用
                 return faker.regexify(pattern);
+            
             case "FAKER":
                 return generateFakerValue(config);
 
@@ -180,7 +233,7 @@ public class DataGenerator {
                 long min = config.getMin() != null ? config.getMin() : 0;
                 long max = config.getMax() != null ? config.getMax() : Long.MAX_VALUE;
                 
-                // 上限がない場合、intの最大値を使用（Long.MAX_VALUEだとXLSX出力などで問題が起きやすいため）
+                // 上限がない場合、intの最大値を使用
                 if (max > Integer.MAX_VALUE) max = Integer.MAX_VALUE; 
 
                 if (min > max) {
@@ -188,12 +241,11 @@ public class DataGenerator {
                     return min;
                 }
                 
-                // 【修正】シード値を持つ this.random を使用した範囲内乱数生成
                 long range = max - min + 1;
-                if (range <= 0) { // オーバーフロー防止
+                if (range <= 0) {
                     return min;
                 }
-                // Random.nextLong() は負の値を返す可能性があるため、absとmodulo演算を使用
+                // シード値を持つ this.random を使用した範囲内乱数生成
                 return min + (Math.abs(this.random.nextLong()) % range);
 
             case "ARRAY":
@@ -220,39 +272,73 @@ public class DataGenerator {
     }
 
     /**
-     * ⭐︎ FAKER型のためのリフレクションを使用した値の生成
-     * @param config カラム設定
-     * @return 生成されたFakerの値
+     * FAKER型のためのリフレクションを使用した値の生成。
+     * 引数付きメソッド呼び出しにも対応。
+     * 例: "name.fullName" または "bothify('##??')"
      */
     private String generateFakerValue(ColumnConfig config) {
-        String generatorPath = config.getGenerator(); // 例: "name.fullName"
+        String generatorPath = config.getGenerator(); // 例: "name.fullName" or "bothify('##??')"
         if (generatorPath == null || generatorPath.isEmpty()) {
             System.err.println("エラー: FAKER型には 'generator' キーが必要です。");
             return "FAKER_ERROR";
         }
 
         try {
-            String[] parts = generatorPath.split("\\.");
-            if (parts.length != 2) {
-                System.err.println("エラー: generator形式は 'module.method' である必要があります。指定: " + generatorPath);
+            // 1. メソッド名と引数を分離 (例: "method('arg')" -> "method", "'arg'")
+            String methodName;
+            String argString = null;
+            
+            int openParen = generatorPath.indexOf('(');
+            int closeParen = generatorPath.lastIndexOf(')');
+
+            if (openParen != -1 && closeParen != -1 && closeParen > openParen) {
+                methodName = generatorPath.substring(0, openParen);
+                argString = generatorPath.substring(openParen + 1, closeParen).trim();
+                // 引数からシングルクォートを除去
+                if (argString.startsWith("'") && argString.endsWith("'")) {
+                    argString = argString.substring(1, argString.length() - 1);
+                }
+            } else {
+                methodName = generatorPath;
+            }
+
+            String moduleName = null;
+            String actualMethodName;
+            
+            // 2. モジュールとメソッドを分離 (例: "name.fullName" -> "name", "fullName")
+            String[] parts = methodName.split("\\.");
+            if (parts.length == 2) {
+                moduleName = parts[0]; 
+                actualMethodName = parts[1]; 
+            } else if (parts.length == 1) {
+                // トップレベルメソッド (例: bothify) の場合、モジュールはFakerインスタンス自体
+                actualMethodName = parts[0];
+            } else {
+                System.err.println("エラー: generator形式が無効です。指定: " + generatorPath);
                 return "FAKER_ERROR";
             }
-            String moduleName = parts[0]; // 例: "name"
-            String methodName = parts[1]; // 例: "fullName"
 
-            // 1. モジュールオブジェクト (例: faker.name() の Name オブジェクト) を取得
-            Method moduleMethod = Faker.class.getMethod(moduleName);
-            Object moduleInstance = moduleMethod.invoke(faker);
+            Object targetInstance = (moduleName == null) ? faker : Faker.class.getMethod(moduleName).invoke(faker);
+            
+            Method generationMethod;
+            Object result;
 
-            // 2. 値を生成するメソッド (例: fullName() ) を取得して呼び出し
-            Method generationMethod = moduleInstance.getClass().getMethod(methodName);
-            Object result = generationMethod.invoke(moduleInstance);
+            if (argString != null) {
+                // 引数ありのメソッド呼び出し
+                generationMethod = targetInstance.getClass().getMethod(actualMethodName, String.class);
+                result = generationMethod.invoke(targetInstance, argString);
+            } else {
+                // 引数なしのメソッド呼び出し
+                generationMethod = targetInstance.getClass().getMethod(actualMethodName);
+                result = generationMethod.invoke(targetInstance);
+            }
 
             return result.toString();
+
         } catch (NoSuchMethodException e) {
             System.err.println("エラー: FAKERメソッドが見つかりません。パス: " + generatorPath + ". メソッド名または引数を確認してください。");
         } catch (InvocationTargetException | IllegalAccessException e) {
-            System.err.println("エラー: FAKERメソッド呼び出し中に例外が発生しました。パス: " + generatorPath);
+            System.err.println("エラー: FAKERメソッド呼び出し中に例外が発生しました。パス: " + generatorPath + ". 詳細: " + e.getMessage());
         } catch (Exception e) {
             System.err.println("Faker値の生成中に予期せぬエラーが発生しました: " + e.getMessage());
         }
@@ -281,9 +367,8 @@ public class DataGenerator {
                  return config.getMinDate();
             }
 
-            // 【修正】シード値を持つ this.random を使用した範囲内エポック秒生成
             long range = maxEpoch - minEpoch + 1;
-            // nextLong()の絶対値を使用し、範囲内の乱数を安全に生成
+            // シード値を持つ this.random を使用した範囲内エポック秒生成
             long randomEpoch = minEpoch + (Math.abs(this.random.nextLong()) % range);
 
             return LocalDateTime.ofEpochSecond(randomEpoch, 0, ZoneOffset.UTC).format(DATE_FORMAT);
@@ -299,6 +384,8 @@ public class DataGenerator {
     private void writeSqlFile(String tableName, List<Map<String, Object>> data, String outputDir) {
         if (data.isEmpty()) return;
 
+        // 出力ディレクトリの作成
+        new File(outputDir).mkdirs(); 
         File outFile = new File(outputDir, tableName.toLowerCase() + ".sql");
         System.out.println("SQLファイルを出力中: " + outFile.getAbsolutePath());
 
@@ -334,6 +421,9 @@ public class DataGenerator {
     private void writeXlsxFile(String tableName, List<Map<String, Object>> data, String outputDir) {
         if (data.isEmpty()) return;
 
+        // 出力ディレクトリの作成
+        new File(outputDir).mkdirs(); 
+        
         Workbook workbook = new XSSFWorkbook();
         Sheet sheet = workbook.createSheet(tableName);
         List<String> columnNames = new ArrayList<>(data.get(0).keySet());
@@ -357,6 +447,7 @@ public class DataGenerator {
                 if (value instanceof String) {
                     cell.setCellValue((String) value);
                 } else if (value instanceof Number) {
+                    // 数値として格納
                     cell.setCellValue(((Number) value).doubleValue());
                 } else {
                     cell.setCellValue(String.valueOf(value));

@@ -53,6 +53,9 @@ public class ColumnConfig {
     @JsonProperty("generator")
     private String generator; 
 
+    @JsonProperty("fkReference")
+    private String fkReference; // 外部キー参照 (例: "other_table.other_column")
+
     // Getter and Setter (Jacksonが使用するため必須)
     public String getColumnName() { return columnName; }
     public void setColumnName(String columnName) { this.columnName = columnName; }
@@ -95,4 +98,8 @@ public class ColumnConfig {
 
     public String getGenerator() { return generator; }
     public void setGenerator(String generator) { this.generator = generator; }
+
+    public String getFkReference() { return fkReference; }
+    public void setFkReference(String fkReference) { this.fkReference = fkReference; }
+
 }

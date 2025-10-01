@@ -4,6 +4,11 @@
     "size": 100,
     "data": [
       {
+        "columnName": "customer_id",
+        "type": "SERIAL",
+        "startFrom": 1000
+      },
+      {
         "columnName": "full_name",
         "type": "FAKER",
         "generator": "name.fullName" 
@@ -11,9 +16,8 @@
       {
         "columnName": "email",
         "type": "REGEX",
-        "pattern": "[a-z0-9]{10}\\@(demo|example)\\.com",
+        "pattern": "[a-z]{5,12}\\d{0,3}\\@(example|test|demo)\\.(com|jp|net)",
         "unique": true
-        
       },
       {
         "columnName": "zip_code",
@@ -23,23 +27,23 @@
       {
         "columnName": "phone",
         "type": "FAKER",
-        "generator": "phoneNumber.phoneNumber"
+        "generator": "phoneNumber.cellPhone" 
       },
       {
         "columnName": "password_raw",
         "type": "STRING",
         "format": "pass123",
-        "isHashed": "hashed_password"
+        "isHashed": "password_hash"
       },
       {
-        "columnName": "last_login_date",
+        "columnName": "last_login",
         "type": "DATETIME",
         "minDate": "2024-01-01 00:00:00"
       },
       {
         "columnName": "status",
         "type": "ARRAY",
-        "values": ["ACTIVE", "INACTIVE", "BLOCKED"],
+        "values": ["ACTIVE", "INACTIVE", "SUSPENDED"],
         "isRandom": true
       }
     ]
@@ -54,27 +58,93 @@
         "startFrom": 50000
       },
       {
-        "columnName": "product_name",
-        "type": "REGEX",
-        "pattern": "(Red|Blue|Green) (T-Shirt|Pants|Hoodie) #\\d{3}"
+        "columnName": "name",
+        "type": "FAKER",
+        "generator": "commerce.productName",
+        "unique": true
+      },
+      {
+        "columnName": "category",
+        "type": "ARRAY",
+        "values": ["家電", "衣料", "食品", "書籍", "DIY"],
+        "isRandom": true
       },
       {
         "columnName": "price",
         "type": "NUMBER",
-        "min": 1000,
-        "max": 99999
+        "min": 100,
+        "max": 50000
       },
       {
         "columnName": "stock",
         "type": "NUMBER",
         "min": 0,
-        "max": 50
+        "max": 1000
+      }
+    ]
+  },
+  {
+    "name": "ORDER_RECORD",
+    "size": 500,
+    "data": [
+      {
+        "columnName": "order_id",
+        "type": "SERIAL",
+        "startFrom": 1
       },
       {
-        "columnName": "size",
-        "type": "ARRAY",
-        "values": ["S", "M", "L", "XL"],
-        "isRandom": false
+        "columnName": "customer_id",
+        "type": "NUMBER",
+        "fkReference": "CUSTOMER.customer_id" 
+      },
+      {
+        "columnName": "order_date",
+        "type": "DATETIME",
+        "minDate": "2024-05-01 00:00:00"
+      },
+      {
+        "columnName": "total_amount",
+        "type": "NUMBER",
+        "min": 500,
+        "max": 150000
+      },
+      {
+        "columnName": "shipping_address",
+        "type": "FAKER",
+        "generator": "address.fullAddress"
+      }
+    ]
+  },
+  {
+    "name": "ORDER_DETAIL",
+    "size": 1500,
+    "data": [
+      {
+        "columnName": "order_detail_id",
+        "type": "SERIAL",
+        "startFrom": 100000
+      },
+      {
+        "columnName": "order_id",
+        "type": "NUMBER",
+        "fkReference": "ORDER_RECORD.order_id" 
+      },
+      {
+        "columnName": "product_id",
+        "type": "NUMBER",
+        "fkReference": "PRODUCT.product_id" 
+      },
+      {
+        "columnName": "quantity",
+        "type": "NUMBER",
+        "min": 1,
+        "max": 5
+      },
+      {
+        "columnName": "price_at_order",
+        "type": "NUMBER",
+        "min": 100,
+        "max": 50000
       }
     ]
   }
