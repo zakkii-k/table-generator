@@ -17,7 +17,8 @@
         "columnName": "username",
         "type": "STRING",
         "format": "user_{i}",
-        "unique": true
+        "unique": true,
+        "startFrom": 10
       },
       {
         "columnName": "email",
@@ -40,7 +41,18 @@
         "type": "ARRAY",
         "values": ["ACTIVE", "INACTIVE", "BLOCKED"],
         "isRandom": true
-      }
+      },
+      {
+            "columnName": "sample",
+            "type": "STRING",
+            "format": "hoge"
+        },
+        {
+            "columnName": "sample2",
+            "type": "STRING",
+            "format": "hoge_{i}",
+            "startFrom": 10
+        }
     ]
   },
   {

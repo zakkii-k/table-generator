@@ -21,7 +21,7 @@ import java.util.stream.Collectors;
 
 /**
  * テーブル定義に基づいてランダムなデータを生成し、SQLまたはXLSXに出力するクラス。
- * 外部キー整合性チェックとFakerの引数付きメソッド呼び出しに対応。
+ * 外部キー整合性チェックとFakerの引数付きメソッド呼び出し、STRINGの連番制御に対応。
  */
 public class DataGenerator {
 
@@ -122,6 +122,9 @@ public class DataGenerator {
         // ARRAY（配列選択）の現在のインデックス
         Map<String, Integer> arrayIndices = new HashMap<>();
 
+        // STRINGプレースホルダー用の連番カウンター (SERIALとは独立)
+        Map<String, Integer> stringCounter = new HashMap<>();
+
         // SERIALカラムを取得し、初期値を設定
         Optional<ColumnConfig> serialColumn = config.getData().stream()
                 .filter(c -> "SERIAL".equalsIgnoreCase(c.getType()))
@@ -132,7 +135,8 @@ public class DataGenerator {
 
         for (int i = 0; i < config.getSize(); i++) {
             Map<String, Object> row = new LinkedHashMap<>();
-            int primaryKey = initialSerialValue + i; // SERIALの暫定値 (STRINGプレースホルダー用)
+            // SERIALカラムがない場合でも、STRINGプレースホルダーのデフォルト開始点として利用
+            int primaryKey = initialSerialValue + i; 
 
             for (ColumnConfig col : config.getData()) {
                 Object value = null;
@@ -151,7 +155,23 @@ public class DataGenerator {
                             break; 
                         }
                         
-                        value = generateSingleValue(col, primaryKey, arrayIndices); 
+                        // STRINGプレースホルダーの連番値を決定
+                        Integer stringPkValue = null;
+                        if ("STRING".equalsIgnoreCase(col.getType()) && col.getFormat() != null && col.getFormat().contains("{i}")) {
+                            // STRINGカラムにstartFromが指定されている場合、それを開始値とする。
+                            int start = col.getStartFrom() != null ? col.getStartFrom() : primaryKey;
+                            
+                            // カウンターを初期化または更新
+                            String counterKey = col.getColumnName() + "_str_pk";
+                            int currentCount = stringCounter.getOrDefault(counterKey, start - 1);
+                            
+                            // カウンターをインクリメントし、値を設定
+                            currentCount++;
+                            stringCounter.put(counterKey, currentCount);
+                            stringPkValue = currentCount;
+                        }
+
+                        value = generateSingleValue(col, stringPkValue != null ? stringPkValue : primaryKey, arrayIndices); 
                         attempts++;
                         
                         // ユニーク制約チェック
@@ -274,7 +294,6 @@ public class DataGenerator {
     /**
      * FAKER型のためのリフレクションを使用した値の生成。
      * 引数付きメソッド呼び出しにも対応。
-     * 例: "name.fullName" または "bothify('##??')"
      */
     private String generateFakerValue(ColumnConfig config) {
         String generatorPath = config.getGenerator(); // 例: "name.fullName" or "bothify('##??')"

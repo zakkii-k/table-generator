@@ -62,7 +62,7 @@ public class RegexGeneratorApp {
             
             System.out.println("設定ファイルをロード中: " + configPath);
             // JSON設定ファイルをロード
-            List<TableConfig> configs = generator.loadConfig(DEFAULT_CONFIG_PATH);
+            List<TableConfig> configs = generator.loadConfig(configPath);
 
             // データ生成と指定されたファイル形式での出力
             generator.generateAndOutput(configs, outputType, outputDir);
