@@ -36,6 +36,11 @@
         "isHashed": "password_hash"
       },
       {
+        "columnName": "original_password_hash",
+        "type": "PASSWORD",
+        "format": "pass123"
+      },
+      {
         "columnName": "last_login",
         "type": "DATETIME",
         "minDate": "2024-01-01 00:00:00"

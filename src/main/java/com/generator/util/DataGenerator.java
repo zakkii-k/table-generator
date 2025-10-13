@@ -22,6 +22,7 @@ import java.util.stream.Collectors;
 /**
  * テーブル定義に基づいてランダムなデータを生成し、SQLまたはXLSXに出力するクラス。
  * 外部キー整合性チェックとFakerの引数付きメソッド呼び出し、STRINGの連番制御に対応。
+ * 修正機能: type: PASSWORD を導入し、平文の定義（format）に基づいてハッシュ値のみを生成する。
  */
 public class DataGenerator {
 
@@ -122,7 +123,7 @@ public class DataGenerator {
         // ARRAY（配列選択）の現在のインデックス
         Map<String, Integer> arrayIndices = new HashMap<>();
 
-        // STRINGプレースホルダー用の連番カウンター (SERIALとは独立)
+        // STRING/PASSWORDプレースホルダー用の連番カウンター (SERIALとは独立)
         Map<String, Integer> stringCounter = new HashMap<>();
 
         // SERIALカラムを取得し、初期値を設定
@@ -135,7 +136,7 @@ public class DataGenerator {
 
         for (int i = 0; i < config.getSize(); i++) {
             Map<String, Object> row = new LinkedHashMap<>();
-            // SERIALカラムがない場合でも、STRINGプレースホルダーのデフォルト開始点として利用
+            // SERIALカラムがない場合でも、STRING/PASSWORDプレースホルダーのデフォルト開始点として利用
             int primaryKey = initialSerialValue + i; 
 
             for (ColumnConfig col : config.getData()) {
@@ -155,10 +156,10 @@ public class DataGenerator {
                             break; 
                         }
                         
-                        // STRINGプレースホルダーの連番値を決定
+                        // STRING/PASSWORDプレースホルダーの連番値を決定
                         Integer stringPkValue = null;
-                        if ("STRING".equalsIgnoreCase(col.getType()) && col.getFormat() != null && col.getFormat().contains("{i}")) {
-                            // STRINGカラムにstartFromが指定されている場合、それを開始値とする。
+                        if (("STRING".equalsIgnoreCase(col.getType()) || "PASSWORD".equalsIgnoreCase(col.getType())) && col.getFormat() != null && col.getFormat().contains("{i}")) {
+                            // STRING/PASSWORDカラムにstartFromが指定されている場合、それを開始値とする。
                             int start = col.getStartFrom() != null ? col.getStartFrom() : primaryKey;
                             
                             // カウンターを初期化または更新
@@ -194,9 +195,10 @@ public class DataGenerator {
                     uniqueValues.computeIfAbsent(col.getColumnName(), k -> Collections.synchronizedSet(new HashSet<>())).add(value);
                 }
 
-                // isHashedが指定されている場合、ハッシュカラムを追加
+                // isHashedが指定されている場合、ハッシュカラムを追加 (平文パスワードも残るケース)
                 if (col.getIsHashed() != null && "STRING".equalsIgnoreCase(col.getType())) {
                     // Hasher を使用
+                    // valueは平文なので、それをハッシュ化
                     String hash = Hasher.hashPassword(value.toString());
                     row.put(col.getIsHashed(), hash);
                 }
@@ -229,11 +231,27 @@ public class DataGenerator {
     /**
      * 単一のカラムの値を生成します。
      * @param config カラム設定
-     * @param primaryKey 現在の行の主キー値 (STRINGプレースホルダー用)
+     * @param primaryKey 現在の行の主キー値 (STRING/PASSWORDプレースホルダー用)
      * @param arrayIndices 配列のインデックス追跡用マップ
      */
     private Object generateSingleValue(ColumnConfig config, int primaryKey, Map<String, Integer> arrayIndices) {
         switch (config.getType().toUpperCase()) {
+            case "SERIAL":
+                // SERIALはgenerateTableData()で処理されるため、ここでは何もしない
+                return null;
+
+            case "PASSWORD": // ★修正: formatに基づいて平文を生成し、ハッシュ値のみを返す
+                // 1. STRINGと同様のロジックで平文パスワードを生成
+                String plainPassFormat = config.getFormat();
+                if (plainPassFormat == null || plainPassFormat.isEmpty()) {
+                    // formatが指定されていない場合、Fakerを使用してランダムなパスワードを生成
+                    plainPassFormat = faker.internet().password(8, 16, true, true, true);
+                }
+                String plainPassword = plainPassFormat.replace("{i}", String.valueOf(primaryKey));
+                
+                // 2. BCryptでハッシュ化して返す
+                return Hasher.hashPassword(plainPassword);
+                
             case "STRING":
                 String formattedString = config.getFormat().replace("{i}", String.valueOf(primaryKey));
                 return formattedString;
